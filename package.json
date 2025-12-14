@@ -1,0 +1,80 @@
+{
+  "name": "znote",
+  "version": "0.1.0",
+  "description": "Your infinite note",
+  "author": "znote",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && npm run electron:package && npm run electron:fixup",
+    "electron:package": "electron-builder --mac",
+    "electron:fixup": "cp -R .next/standalone/node_modules dist/mac-arm64/znote.app/Contents/Resources/standalone/"
+  },
+  "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^17.2.3",
+    "next": "16.0.10",
+    "next-auth": "^5.0.0-beta.30",
+    "prisma": "^5.22.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.10",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.znote.app",
+    "productName": "znote",
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "nodeGypRebuild": false,
+    "mac": {
+      "target": "dir",
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "public",
+        "to": "standalone/public",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "prisma",
+        "to": "standalone/prisma",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": false
+  }
+}
