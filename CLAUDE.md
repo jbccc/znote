@@ -36,4 +36,7 @@ Next.js 16 + Prisma/SQLite + NextAuth + Electron
 
 ## Build
 
-`npm run electron:build` → `dist/mac-arm64/znote.app`
+```
+npm run electron:build
+cp -R dist/mac-arm64/znote.app /Applications/
+```
