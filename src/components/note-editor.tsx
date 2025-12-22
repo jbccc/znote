@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Block,
   NoteData,
@@ -13,9 +13,13 @@ import {
   getLogicalDay,
   getTomorrowDay,
   isToday,
+  parseTimeTag,
 } from "@/lib/types";
 import { SettingsButton, loadSettings, saveSettings } from "./settings";
 import { TomorrowTasks } from "./tomorrow-tasks";
+import { MarkdownLine } from "./markdown-line";
+import { LiveEditor, LiveEditorHandle } from "./live-editor";
+import { useCalendarSync } from "@/hooks/use-calendar-sync";
 
 const LOCAL_STORAGE_KEY = "znote-content";
 const LAST_TOMORROW_CHECK_KEY = "znote-last-tomorrow-check";
@@ -32,10 +36,23 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<LiveEditorHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const previousLinesRef = useRef<string[]>([]);
+  const previousBlocksRef = useRef<Map<string, Block>>(new Map());
+  const calendarSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Calendar sync callback
+  const handleCalendarBlockUpdate = useCallback((blockId: string, calendarEventId: string | undefined) => {
+    setBlocks((prev) =>
+      prev.map((b) => (b.id === blockId ? { ...b, calendarEventId } : b))
+    );
+  }, []);
+
+  const { syncBlock, deleteEvent } = useCalendarSync({
+    enabled: isLoggedIn,
+    onBlockUpdate: handleCalendarBlockUpdate,
+  });
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -137,18 +154,19 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
     saveSettings(newSettings);
   };
 
+  // Track previous blocks for calendar sync
   useEffect(() => {
-    previousLinesRef.current = blocks.map((b) => b.text);
+    const map = new Map<string, Block>();
+    for (const block of blocks) {
+      map.set(block.id, block);
+    }
+    previousBlocksRef.current = map;
   }, [blocks]);
 
-  // Auto-resize, scroll to bottom, and focus on load
+  // Scroll to bottom and focus on load
   useEffect(() => {
-    if (loaded && textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
-      textareaRef.current.focus();
-      const len = textareaRef.current.value.length;
-      textareaRef.current.setSelectionRange(len, len);
+    if (loaded) {
+      editorRef.current?.focus();
       window.scrollTo(0, document.body.scrollHeight);
     }
   }, [loaded]);
@@ -183,12 +201,88 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
       }
     }
 
+    // Strip trailing empty lines from past days
+    for (const group of groups) {
+      if (!group.isCurrentDay) {
+        while (group.blocks.length > 0 && !group.blocks[group.blocks.length - 1].text.trim()) {
+          group.blocks.pop();
+        }
+      }
+    }
+
     return groups;
   };
 
   const getTodayBlocks = () => blocks.filter((b) => isToday(b.createdAt, settings.dayCutHour));
   const getPastBlocks = () => blocks.filter((b) => !isToday(b.createdAt, settings.dayCutHour));
-  const getTodayTextContent = () => getTodayBlocks().map((b) => b.text).join("\n");
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = e.currentTarget;
+    const { value, selectionStart, selectionEnd } = textarea;
+
+    // Cmd+Enter = forced newline (no list continuation)
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const before = value.slice(0, selectionStart);
+      const after = value.slice(selectionEnd);
+      const newValue = before + "\n" + after;
+      handleTextChange(newValue);
+      // Set cursor position after React re-renders
+      requestAnimationFrame(() => {
+        textarea.setSelectionRange(selectionStart + 1, selectionStart + 1);
+      });
+      return;
+    }
+
+    // Regular Enter = list continuation
+    if (e.key === "Enter" && !e.shiftKey) {
+      const lineStart = value.lastIndexOf("\n", selectionStart - 1) + 1;
+      const currentLine = value.slice(lineStart, selectionStart);
+
+      // Check for list patterns
+      const todoMatch = currentLine.match(/^(\s*)- \[([ x])\] (.*)$/);
+      const bulletMatch = currentLine.match(/^(\s*)- (.*)$/);
+      const numberMatch = currentLine.match(/^(\s*)(\d+)\. (.*)$/);
+
+      let prefix = "";
+      let isEmpty = false;
+
+      if (todoMatch) {
+        prefix = todoMatch[1] + "- [ ] ";
+        isEmpty = !todoMatch[3].trim();
+      } else if (bulletMatch) {
+        prefix = bulletMatch[1] + "- ";
+        isEmpty = !bulletMatch[2].trim();
+      } else if (numberMatch) {
+        const nextNum = parseInt(numberMatch[2]) + 1;
+        prefix = numberMatch[1] + nextNum + ". ";
+        isEmpty = !numberMatch[3].trim();
+      }
+
+      if (prefix) {
+        e.preventDefault();
+        const before = value.slice(0, selectionStart);
+        const after = value.slice(selectionEnd);
+
+        if (isEmpty) {
+          // Empty list item - remove it and just add newline
+          const newValue = value.slice(0, lineStart) + after;
+          handleTextChange(newValue);
+          requestAnimationFrame(() => {
+            textarea.setSelectionRange(lineStart, lineStart);
+          });
+        } else {
+          // Continue the list
+          const newValue = before + "\n" + prefix + after;
+          const newCursor = selectionStart + 1 + prefix.length;
+          handleTextChange(newValue);
+          requestAnimationFrame(() => {
+            textarea.setSelectionRange(newCursor, newCursor);
+          });
+        }
+      }
+    }
+  };
 
   const handleTextChange = (text: string) => {
     const newLines = text.split("\n");
@@ -213,10 +307,17 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
       }
     }
 
+    // Find deleted blocks and clean up their calendar events
+    const newBlockIds = new Set(newTodayBlocks.map((b) => b.id));
+    for (const oldBlock of todayBlocks) {
+      if (!newBlockIds.has(oldBlock.id) && oldBlock.calendarEventId) {
+        deleteEvent(oldBlock.calendarEventId);
+      }
+    }
+
     const pastBlocks = getPastBlocks();
     const allBlocks = [...pastBlocks, ...newTodayBlocks];
     setBlocks(allBlocks);
-    previousLinesRef.current = allBlocks.map((b) => b.text);
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -230,6 +331,23 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
         saveToLocal(data);
       }
     }, 500);
+
+    // Debounce calendar sync to avoid too many API calls while typing
+    if (calendarSyncTimeoutRef.current) {
+      clearTimeout(calendarSyncTimeoutRef.current);
+    }
+
+    calendarSyncTimeoutRef.current = setTimeout(() => {
+      for (const block of newTodayBlocks) {
+        const prevBlock = previousBlocksRef.current.get(block.id);
+        if (parseTimeTag(block.text)) {
+          syncBlock(block, prevBlock);
+        } else if (prevBlock && prevBlock.calendarEventId && !parseTimeTag(block.text)) {
+          // Time tag was removed
+          syncBlock(block, prevBlock);
+        }
+      }
+    }, 1500); // 1.5s debounce for calendar sync
   };
 
   const handleTomorrowTasksChange = (newTasks: TomorrowTask[]) => {
@@ -274,24 +392,17 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
             {group.day}
           </div>
           {group.isCurrentDay ? (
-            <textarea
-              ref={textareaRef}
-              value={getTodayTextContent()}
-              onChange={(e) => {
-                handleTextChange(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = e.target.scrollHeight + "px";
-              }}
+            <LiveEditor
+              ref={editorRef}
+              blocks={getTodayBlocks()}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
               placeholder="start logging..."
-              className="w-full bg-transparent resize-none outline-none text-sm leading-relaxed placeholder:text-foreground/20 font-mono overflow-hidden"
-              spellCheck={false}
-              rows={1}
-              style={{ minHeight: "1.5em" }}
             />
           ) : (
             <div className="text-sm leading-relaxed font-mono text-foreground/50">
               {group.blocks.map((block) => (
-                <div key={block.id}>{block.text || "\u00A0"}</div>
+                <MarkdownLine key={block.id} block={block} />
               ))}
             </div>
           )}
@@ -303,19 +414,12 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
           <div className="text-xs text-foreground/30 mb-2 font-mono">
             {getLogicalDay(new Date().toISOString(), settings.dayCutHour)}
           </div>
-          <textarea
-            ref={textareaRef}
-            value=""
-            onChange={(e) => {
-              handleTextChange(e.target.value);
-              e.target.style.height = "auto";
-              e.target.style.height = e.target.scrollHeight + "px";
-            }}
+          <LiveEditor
+            ref={editorRef}
+            blocks={[]}
+            onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
             placeholder="start logging..."
-            className="w-full bg-transparent resize-none outline-none text-sm leading-relaxed placeholder:text-foreground/20 font-mono overflow-hidden"
-            spellCheck={false}
-            rows={1}
-            style={{ minHeight: "1.5em" }}
           />
         </div>
       )}

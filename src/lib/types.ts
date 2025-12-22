@@ -2,6 +2,7 @@ export interface Block {
   id: string;
   text: string;
   createdAt: string;
+  calendarEventId?: string;
 }
 
 export interface TomorrowTask {
@@ -92,4 +93,12 @@ export function getTomorrowDay(dayCutHour: number): string {
     month: "long",
     day: "numeric",
   });
+}
+
+export function parseTimeTag(text: string): { time: string; task: string } | null {
+  const match = text.match(/^(?:\s*)-\s*\[(\d{1,2}:\d{2})\]\s*(.*)$/);
+  if (match) {
+    return { time: match[1], task: match[2] };
+  }
+  return null;
 }

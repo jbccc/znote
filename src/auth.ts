@@ -5,7 +5,17 @@ import { prisma } from "@/lib/db";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  providers: [Google],
+  providers: [
+    Google({
+      authorization: {
+        params: {
+          scope: "openid email profile https://www.googleapis.com/auth/calendar.events",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    }),
+  ],
   callbacks: {
     session({ session, user }) {
       session.user.id = user.id;
