@@ -373,8 +373,20 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
 
   const dayGroups = groupBlocksByDay();
 
+  // Click on empty area to focus editor at end
+  const handleContainerClick = (e: React.MouseEvent) => {
+    // Only if clicking on the container itself (empty space)
+    if (e.target === containerRef.current) {
+      editorRef.current?.focus();
+    }
+  };
+
   return (
-    <div ref={containerRef} className="relative pb-[70vh]">
+    <div
+      ref={containerRef}
+      className="relative pb-[70vh] cursor-text"
+      onClick={handleContainerClick}
+    >
       <header className="sticky top-0 z-40 flex justify-between items-center py-4 md:py-8 text-xs text-foreground/40 bg-background opacity-0 hover:opacity-100 has-[:focus]:opacity-100 transition-opacity duration-300">
         <span>znote</span>
         <SettingsButton

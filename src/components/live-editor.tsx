@@ -171,12 +171,25 @@ export const LiveEditor = forwardRef<LiveEditorHandle, LiveEditorProps>(
       updateCursorLine();
     }, [text]);
 
+    // Click on empty area below text to focus at end
+    const handleContainerClick = (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget && textareaRef.current) {
+        textareaRef.current.focus();
+        const len = textareaRef.current.value.length;
+        textareaRef.current.setSelectionRange(len, len);
+        updateCursorLine();
+      }
+    };
+
     return (
-      <div className="relative min-h-[1.5em]">
+      <div
+        className="relative min-h-[1.5em] cursor-text"
+        onClick={handleContainerClick}
+      >
         {/* Rendered overlay - shows formatted markdown, raw text for current line */}
         <div
           ref={overlayRef}
-          className="absolute inset-0 text-sm leading-relaxed font-mono pointer-events-none overflow-hidden whitespace-pre-wrap break-words"
+          className="text-sm leading-relaxed font-mono pointer-events-none whitespace-pre-wrap break-words"
           aria-hidden="true"
         >
           {lines.length > 0 ? (
@@ -200,10 +213,16 @@ export const LiveEditor = forwardRef<LiveEditorHandle, LiveEditorProps>(
           ref={textareaRef}
           value={text}
           onChange={(e) => {
+            // Save scroll position before update
+            const scrollY = window.scrollY;
             onChange(e.target.value);
             e.target.style.height = "auto";
             e.target.style.height = e.target.scrollHeight + "px";
             updateCursorLine();
+            // Restore scroll position
+            requestAnimationFrame(() => {
+              window.scrollTo(window.scrollX, scrollY);
+            });
           }}
           onKeyDown={(e) => {
             onKeyDown?.(e);
@@ -220,7 +239,7 @@ export const LiveEditor = forwardRef<LiveEditorHandle, LiveEditorProps>(
           }}
           onScroll={handleScroll}
           placeholder=""
-          className="relative z-10 w-full bg-transparent resize-none outline-none text-sm leading-relaxed font-mono overflow-hidden text-transparent caret-foreground selection:bg-foreground/20"
+          className="absolute inset-0 z-10 w-full bg-transparent resize-none outline-none text-sm leading-relaxed font-mono overflow-hidden text-transparent caret-foreground selection:bg-foreground/20"
           spellCheck={false}
           rows={1}
           style={{ minHeight: "1.5em" }}
