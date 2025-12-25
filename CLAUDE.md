@@ -32,11 +32,37 @@ A single infinite log. Open, write at the bottom, close.
 
 ## Stack
 
-Next.js 16 + Prisma/SQLite + NextAuth + Electron
+- **app/**: React + Vite + Tailwind (frontend)
+- **server/**: Express + Prisma + Postgres (sync API)
 
-## Build
+## Development
+
+```bash
+# Start sync server (port 3001)
+cd server && npm run dev
+
+# Start React app (port 3000)
+cd app && npm run dev
+```
+
+## Architecture
 
 ```
-npm run electron:build
-cp -R dist/mac-arm64/znote.app /Applications/
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   Web App   │  │ Desktop App │  │ Mobile App  │
+│   (Vite)    │  │ (Electron)  │  │  (future)   │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       └────────────────┼────────────────┘
+                        ▼
+              ┌─────────────────┐
+              │   Sync Server   │
+              │   (Express)     │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │    Postgres     │
+              └─────────────────┘
 ```
+
+- Offline-first: local storage when offline, syncs when online
+- Conflict resolution: keeps both versions on conflict
