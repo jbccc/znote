@@ -25,9 +25,9 @@ export type SyncEventHandler = (
 class SyncEngine {
   private status: SyncStatus = "idle";
   private listeners: Set<SyncEventHandler> = new Set();
-  private syncInterval: NodeJS.Timeout | null = null;
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
   private isOnline = true;
-  private userId: string | null = null;
+  private _userId: string | null = null;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -83,7 +83,7 @@ class SyncEngine {
     // Verify token is still valid
     try {
       const { user } = await api.getCurrentUser();
-      this.userId = user.id;
+      this._userId = user.id;
       storage.setStoredUser(user);
 
       // Start periodic sync
@@ -104,7 +104,7 @@ class SyncEngine {
       const { token, user } = await api.signInWithGoogle(idToken, refreshToken);
       storage.setAuthToken(token);
       storage.setStoredUser(user);
-      this.userId = user.id;
+      this._userId = user.id;
 
       // Push any local changes, then do full sync
       await this.pushPendingChanges();
@@ -129,7 +129,7 @@ class SyncEngine {
       const { token, user } = await api.signInInternal(userData);
       storage.setAuthToken(token);
       storage.setStoredUser(user);
-      this.userId = user.id;
+      this._userId = user.id;
 
       // Push any local changes, then do full sync
       await this.pushPendingChanges();
@@ -145,7 +145,7 @@ class SyncEngine {
   // Sign out
   signOut(): void {
     storage.clearAuthToken();
-    this.userId = null;
+    this._userId = null;
     this.stopPeriodicSync();
     this.setStatus("idle");
   }
@@ -432,7 +432,7 @@ class SyncEngine {
   }
 
   // Debounced sync
-  private syncDebounceTimer: NodeJS.Timeout | null = null;
+  private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   private debouncedSync(): void {
     if (this.syncDebounceTimer) {

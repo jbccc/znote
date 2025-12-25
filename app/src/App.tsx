@@ -9,7 +9,6 @@ import {
   getLogicalDay,
   getTomorrowDay,
   isToday,
-  parseTimeTag,
 } from "./lib/app-types";
 import { syncEngine } from "./lib/sync";
 import { SettingsButton, loadSettings, saveSettings } from "./components/Settings";
@@ -19,7 +18,6 @@ import { LiveEditor, LiveEditorHandle } from "./components/LiveEditor";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 const LOCAL_STORAGE_KEY = "znote-content";
-const LAST_TOMORROW_CHECK_KEY = "znote-last-tomorrow-check";
 
 function NoteEditor() {
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -30,7 +28,7 @@ function NoteEditor() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const editorRef = useRef<LiveEditorHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize
   useEffect(() => {

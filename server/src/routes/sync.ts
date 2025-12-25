@@ -75,7 +75,17 @@ router.post("/push", async (req, res) => {
         });
         const existingMap = new Map(existing.map((b) => [b.id, b]));
 
-        const toCreate: Parameters<typeof tx.block.createMany>[0]["data"] = [];
+        const toCreate: Array<{
+          id: string;
+          userId: string;
+          text: string;
+          createdAt: Date;
+          calendarEventId?: string | null;
+          position: number;
+          version: number;
+          deletedAt: Date | null;
+          clientId?: string;
+        }> = [];
         const toUpdate: Array<{ id: string; data: Parameters<typeof tx.block.update>[0]["data"] }> = [];
 
         for (const block of blocks) {
@@ -155,7 +165,16 @@ router.post("/push", async (req, res) => {
         });
         const existingMap = new Map(existing.map((t) => [t.id, t]));
 
-        const toCreate: Parameters<typeof tx.tomorrowTask.createMany>[0]["data"] = [];
+        const toCreate: Array<{
+          id: string;
+          userId: string;
+          text: string;
+          time?: string | null;
+          position: number;
+          version: number;
+          deletedAt: Date | null;
+          clientId?: string;
+        }> = [];
         const toUpdate: Array<{ id: string; data: Parameters<typeof tx.tomorrowTask.update>[0]["data"] }> = [];
 
         for (const task of tomorrowTasks) {
