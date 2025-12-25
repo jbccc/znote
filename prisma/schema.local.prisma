@@ -1,0 +1,109 @@
+// Local SQLite schema for offline storage
+// Mirrors the server schema with additional sync tracking
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-local"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("LOCAL_DATABASE_URL")
+}
+
+// Local user info (cached from server)
+model LocalUser {
+  id            String    @id
+  email         String    @unique
+  name          String?
+  image         String?
+  googleId      String    @unique
+
+  blocks        LocalBlock[]
+  tomorrowTasks LocalTomorrowTask[]
+  settings      LocalSettings?
+}
+
+model LocalBlock {
+  id              String    @id
+  userId          String
+  user            LocalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  text            String
+  createdAt       DateTime
+  calendarEventId String?
+  position        Int       @default(0)
+
+  // Sync metadata
+  version         Int       @default(1)
+  updatedAt       DateTime
+  deletedAt       DateTime?
+  clientId        String?
+
+  // Local sync tracking
+  syncStatus      String    @default("synced") // synced, pending, conflict
+  serverVersion   Int?      // Last known server version (for conflict detection)
+  lastSyncedAt    DateTime? // When this was last successfully synced
+
+  @@index([userId, deletedAt])
+  @@index([userId, syncStatus])
+}
+
+model LocalTomorrowTask {
+  id        String    @id
+  userId    String
+  user      LocalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  text      String
+  time      String?
+  position  Int       @default(0)
+
+  // Sync metadata
+  version   Int       @default(1)
+  updatedAt DateTime
+  deletedAt DateTime?
+  clientId  String?
+
+  // Local sync tracking
+  syncStatus    String    @default("synced")
+  serverVersion Int?
+  lastSyncedAt  DateTime?
+
+  @@index([userId, deletedAt])
+  @@index([userId, syncStatus])
+}
+
+model LocalSettings {
+  id         String @id @default(cuid())
+  userId     String @unique
+  user       LocalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  theme      String @default("system")
+  dayCutHour Int    @default(4)
+
+  updatedAt  DateTime
+  syncStatus String   @default("synced")
+}
+
+// Queue of changes to push to server
+model SyncQueue {
+  id        String   @id @default(cuid())
+  userId    String
+  entityType String  // "block", "tomorrowTask", "settings"
+  entityId  String
+  operation String   // "create", "update", "delete"
+  payload   String   // JSON of the change
+  createdAt DateTime @default(now())
+  attempts  Int      @default(0)
+  lastError String?
+
+  @@index([userId, createdAt])
+}
+
+// Track last successful sync point
+model SyncState {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  lastSyncedAt    DateTime
+  serverCursor    String?  // Opaque cursor for incremental sync
+}

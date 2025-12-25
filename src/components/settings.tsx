@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Settings, DEFAULT_SETTINGS } from "@/lib/types";
+import { getApiUrl, setApiUrl } from "@/lib/sync/api";
 
 const SETTINGS_KEY = "znote-settings";
 
@@ -21,7 +22,12 @@ export function SettingsButton({
   onSettingsChange,
 }: SettingsProps) {
   const [open, setOpen] = useState(false);
+  const [syncUrl, setSyncUrl] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSyncUrl(getApiUrl());
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -39,6 +45,11 @@ export function SettingsButton({
 
   const handleDayCutChange = (hour: number) => {
     onSettingsChange({ ...settings, dayCutHour: hour });
+  };
+
+  const handleSyncUrlChange = (url: string) => {
+    setSyncUrl(url);
+    setApiUrl(url);
   };
 
   return (
@@ -85,6 +96,16 @@ export function SettingsButton({
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="pt-2 mt-2 border-t border-foreground/10">
+              <label className="block text-foreground/30 mb-1">sync server</label>
+              <input
+                type="text"
+                value={syncUrl}
+                onChange={(e) => handleSyncUrlChange(e.target.value)}
+                placeholder="https://your-server.com"
+                className="w-full bg-transparent border border-foreground/10 rounded px-1 py-0.5 text-foreground/60 outline-none focus:border-foreground/30"
+              />
             </div>
           </div>
         </div>

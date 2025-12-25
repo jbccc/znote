@@ -3,12 +3,22 @@ export interface Block {
   text: string;
   createdAt: string;
   calendarEventId?: string;
+  // Sync metadata (optional for backward compatibility)
+  version?: number;
+  updatedAt?: string;
+  position?: number;
+  syncStatus?: "synced" | "pending" | "conflict";
 }
 
 export interface TomorrowTask {
   id: string;
   text: string;
   time: string;
+  // Sync metadata (optional for backward compatibility)
+  version?: number;
+  updatedAt?: string;
+  position?: number;
+  syncStatus?: "synced" | "pending" | "conflict";
 }
 
 export interface Settings {

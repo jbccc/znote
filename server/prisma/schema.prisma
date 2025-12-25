@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  googleId      String    @unique
+  refreshToken  String?   // Google refresh token for calendar access
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  blocks        Block[]
+  tomorrowTasks TomorrowTask[]
+  settings      Settings?
+}
+
+model Block {
+  id              String    @id // Client-generated ID
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  text            String
+  createdAt       DateTime  // When the block was originally created (content date)
+  calendarEventId String?   // Google Calendar event ID if synced
+
+  // Sync metadata
+  version         Int       @default(1)  // Increments on each edit
+  updatedAt       DateTime  @updatedAt   // Last modification time
+  deletedAt       DateTime? // Soft delete for sync (null = active)
+  clientId        String?   // Which client made the last change
+
+  // Ordering - blocks are ordered by createdAt, but we need position for same-second blocks
+  position        Int       @default(0)  // Position within same createdAt second
+
+  @@index([userId, deletedAt])
+  @@index([userId, updatedAt])
+  @@index([userId, createdAt])
+}
+
+model TomorrowTask {
+  id        String   @id // Client-generated ID
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  text      String
+  time      String?  // "HH:MM" format, null if no time set
+  position  Int      @default(0) // Order in list
+
+  // Sync metadata
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  clientId  String?
+
+  @@index([userId, deletedAt])
+}
+
+model Settings {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  theme      String   @default("system") // system, light, dark
+  dayCutHour Int      @default(4)        // Hour when new day starts (0-23)
+
+  updatedAt  DateTime @updatedAt
+}
+
+// Track sync conflicts for manual resolution
+model Conflict {
+  id            String   @id @default(cuid())
+  userId        String
+  blockId       String   // The block that had a conflict
+
+  localText     String   // What the local client had
+  localVersion  Int
+  localUpdatedAt DateTime
+
+  serverText    String   // What the server had
+  serverVersion Int
+  serverUpdatedAt DateTime
+
+  resolvedAt    DateTime? // Null until user resolves
+  resolution    String?   // "kept_local", "kept_server", "kept_both"
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId, resolvedAt])
+}

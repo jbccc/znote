@@ -20,6 +20,9 @@ import { TomorrowTasks } from "./tomorrow-tasks";
 import { MarkdownLine } from "./markdown-line";
 import { LiveEditor, LiveEditorHandle } from "./live-editor";
 import { useCalendarSync } from "@/hooks/use-calendar-sync";
+import { SyncBridge } from "./sync-bridge";
+import { SyncStatusIndicator } from "./sync-status";
+import { syncEngine } from "@/lib/sync";
 
 const LOCAL_STORAGE_KEY = "znote-content";
 const LAST_TOMORROW_CHECK_KEY = "znote-last-tomorrow-check";
@@ -36,6 +39,7 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error" | "offline">("idle");
   const editorRef = useRef<LiveEditorHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -56,6 +60,15 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
 
   useEffect(() => {
     setSettings(loadSettings());
+
+    // Subscribe to sync status changes
+    const unsubscribe = syncEngine.subscribe((event, data) => {
+      if (event === "status-change") {
+        setSyncStatus(data as typeof syncStatus);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -387,8 +400,12 @@ export function NoteEditor({ isLoggedIn, onSignIn, onSignOut }: NoteEditorProps)
       className="relative pb-[70vh] cursor-text"
       onClick={handleContainerClick}
     >
+      <SyncBridge isLoggedIn={isLoggedIn} />
       <header className="sticky top-0 z-40 flex justify-between items-center py-4 md:py-8 text-xs text-foreground/40 bg-background opacity-0 hover:opacity-100 has-[:focus]:opacity-100 transition-opacity duration-300">
-        <span>znote</span>
+        <div className="flex items-center gap-2">
+          <span>znote</span>
+          <SyncStatusIndicator status={syncStatus} isOnline={syncEngine.checkOnline()} />
+        </div>
         <SettingsButton
           isLoggedIn={isLoggedIn}
           onSignIn={onSignIn}
