@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --background: 255 255 255;
+  --foreground: 10 10 10;
+}
+
+.dark {
+  --background: 10 10 10;
+  --foreground: 245 245 245;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: 10 10 10;
+    --foreground: 245 245 245;
+  }
+}
+
+@theme {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+::selection {
+  background-color: rgb(var(--foreground) / 0.2);
+}
