@@ -30,6 +30,10 @@ function NoteEditor() {
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Track if we're currently editing to avoid sync overwrites
+  const isEditingRef = useRef(false);
+  const editTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Initialize
   useEffect(() => {
     setSettings(loadSettings());
@@ -39,11 +43,12 @@ function NoteEditor() {
       if (event === "status-change") {
         setSyncStatus(data as typeof syncStatus);
       }
-      if (event === "blocks-updated") {
+      // Only update from sync if not currently editing
+      if (event === "blocks-updated" && !isEditingRef.current) {
         const syncBlocks = data as Block[];
         setBlocks(syncBlocks);
       }
-      if (event === "tomorrow-tasks-updated") {
+      if (event === "tomorrow-tasks-updated" && !isEditingRef.current) {
         const syncTasks = data as TomorrowTask[];
         setTomorrowTasks(syncTasks);
       }
@@ -117,6 +122,8 @@ function NoteEditor() {
     setIsLoggedIn(false);
   };
 
+  const lastSavedBlocksRef = useRef<Map<string, string>>(new Map());
+
   const saveData = useCallback((newBlocks: Block[], newTasks: TomorrowTask[]) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -124,18 +131,22 @@ function NoteEditor() {
 
     saveTimeoutRef.current = setTimeout(() => {
       if (isLoggedIn) {
-        // Save via sync engine
+        // Only save blocks that have actually changed
         for (const block of newBlocks) {
-          syncEngine.saveBlock({
-            id: block.id,
-            text: block.text,
-            createdAt: block.createdAt,
-            calendarEventId: block.calendarEventId || null,
-            position: 0,
-            version: block.version || 1,
-            updatedAt: new Date().toISOString(),
-            deletedAt: null,
-          });
+          const lastSaved = lastSavedBlocksRef.current.get(block.id);
+          if (lastSaved !== block.text) {
+            syncEngine.saveBlock({
+              id: block.id,
+              text: block.text,
+              createdAt: block.createdAt,
+              calendarEventId: block.calendarEventId || null,
+              position: 0,
+              version: block.version || 1,
+              updatedAt: new Date().toISOString(),
+              deletedAt: null,
+            });
+            lastSavedBlocksRef.current.set(block.id, block.text);
+          }
         }
       } else {
         // Save to local storage
@@ -240,6 +251,16 @@ function NoteEditor() {
   };
 
   const handleTextChange = (text: string) => {
+    // Mark as editing to prevent sync overwrites
+    isEditingRef.current = true;
+    if (editTimeoutRef.current) {
+      clearTimeout(editTimeoutRef.current);
+    }
+    // Clear editing flag after 2 seconds of no typing
+    editTimeoutRef.current = setTimeout(() => {
+      isEditingRef.current = false;
+    }, 2000);
+
     const newLines = text.split("\n");
     const todayBlocks = getTodayBlocks();
     const now = new Date().toISOString();
