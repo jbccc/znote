@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,10 +15,11 @@ import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import { useSync } from "./src/hooks/useSync";
 import { Block, generateId, getLogicalDay, isToday } from "./src/lib/types";
+import { MarkdownLine } from "./src/components/MarkdownLine";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID = "138168406016-hfd59u7kbqm3vhk0n7sefaveajcmlht3.apps.googleusercontent.com";
+const GOOGLE_IOS_CLIENT_ID = "138168406016-040lmt9q5ok83gkq2af2fq76n06p7le3.apps.googleusercontent.com";
 
 export default function App() {
   const {
@@ -28,14 +29,19 @@ export default function App() {
     signIn,
     signOut,
     saveBlock,
+    deleteBlock,
   } = useSync();
 
   const [text, setText] = useState("");
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
+  const scrollViewRef = useRef<ScrollView>(null);
+  const todayBlockIdsRef = useRef<string[]>([]);
+  const lastSavedTextRef = useRef<string>("");
+  const hasScrolledRef = useRef(false);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: GOOGLE_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
   });
 
   useEffect(() => {
@@ -46,33 +52,79 @@ export default function App() {
   }, [response]);
 
   useEffect(() => {
-    if (initialized && !isLoggedIn) {
-      const saved = blocks.map((b) => b.text).join("\n");
-      setText(saved);
-    } else if (initialized && isLoggedIn) {
+    if (initialized) {
       const todayBlocks = blocks.filter((b) => isToday(b.createdAt, 4));
-      setText(todayBlocks.map((b) => b.text).join("\n"));
+      todayBlockIdsRef.current = todayBlocks.map((b) => b.id);
+      const serverText = todayBlocks.map((b) => b.text).join("\n");
+
+      // Only update if server has different content than what we last saved
+      // This preserves local empty lines while still accepting server changes
+      const localLines = text.split("\n").filter((l) => l.trim()).join("\n");
+      if (serverText !== lastSavedTextRef.current && serverText !== localLines) {
+        setText(serverText);
+        lastSavedTextRef.current = serverText;
+      }
     }
-  }, [initialized, isLoggedIn, blocks]);
+  }, [initialized, blocks]);
 
-  const handleSave = async () => {
-    const lines = text.split("\n");
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSave = async (newText: string) => {
+    if (newText === lastSavedTextRef.current) return;
+
+    // Only save non-empty lines, but preserve the full text for editing
+    const lines = newText.split("\n").filter((l) => l.trim());
     const now = new Date().toISOString();
+    const existingIds = [...todayBlockIdsRef.current];
+    const newIds: string[] = [];
 
-    for (const line of lines) {
-      if (line.trim()) {
+    // Update or create blocks for each line
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (existingIds[i]) {
+        // Update existing block
         await saveBlock({
-          id: generateId(),
+          id: existingIds[i],
+          text: line,
+          updatedAt: now,
+        });
+        newIds.push(existingIds[i]);
+      } else {
+        // Create new block
+        const id = generateId();
+        await saveBlock({
+          id,
           text: line,
           createdAt: now,
           calendarEventId: null,
-          position: 0,
+          position: i,
           version: 1,
           updatedAt: now,
           deletedAt: null,
         });
+        newIds.push(id);
       }
     }
+
+    // Delete extra blocks if we have fewer lines now
+    for (let i = lines.length; i < existingIds.length; i++) {
+      await deleteBlock(existingIds[i]);
+    }
+
+    todayBlockIdsRef.current = newIds;
+    lastSavedTextRef.current = newText;
+  };
+
+  const handleTextChange = (newText: string) => {
+    setText(newText);
+
+    // Debounce save to avoid saving on every keystroke
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      handleSave(newText);
+    }, 500);
   };
 
   if (!initialized) {
@@ -117,39 +169,46 @@ export default function App() {
         )}
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        onContentSizeChange={() => {
+          if (!hasScrolledRef.current) {
+            scrollViewRef.current?.scrollToEnd({ animated: false });
+            hasScrolledRef.current = true;
+          }
+        }}
+      >
         {dayGroups.map((group) => (
           <View key={group.day} style={styles.dayGroup}>
             <Text style={[styles.dayHeader, isDark && styles.dayHeaderDark]}>
               {group.day}
             </Text>
             {group.blocks.map((block) => (
-              <Text key={block.id} style={[styles.blockText, isDark && styles.blockTextDark]}>
-                {block.text}
-              </Text>
+              <MarkdownLine key={block.id} block={block} isDark={isDark} />
             ))}
           </View>
         ))}
 
-        <View style={styles.dayGroup}>
+        <View style={styles.todaySection}>
           <Text style={[styles.dayHeader, isDark && styles.dayHeaderDark]}>
             {getLogicalDay(new Date().toISOString(), 4)}
           </Text>
+          <TextInput
+            style={[styles.input, isDark && styles.inputDark]}
+            value={text}
+            onChangeText={handleTextChange}
+            placeholder="start logging..."
+            placeholderTextColor={isDark ? "#666" : "#999"}
+            multiline
+            autoFocus
+            scrollEnabled={false}
+          />
         </View>
-      </ScrollView>
 
-      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-        <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
-          value={text}
-          onChangeText={setText}
-          onBlur={handleSave}
-          placeholder="start logging..."
-          placeholderTextColor={isDark ? "#666" : "#999"}
-          multiline
-          autoFocus
-        />
-      </View>
+        <View style={styles.bottomPadding} />
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -187,7 +246,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     paddingHorizontal: 20,
+    flexGrow: 1,
   },
   dayGroup: {
     marginBottom: 24,
@@ -211,23 +273,23 @@ const styles = StyleSheet.create({
   blockTextDark: {
     color: "#f5f5f5",
   },
-  inputContainer: {
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-    padding: 20,
-  },
-  inputContainerDark: {
-    borderTopColor: "#222",
+  todaySection: {
+    flex: 1,
+    minHeight: 200,
   },
   input: {
     fontSize: 14,
     lineHeight: 21,
     color: "#0a0a0a",
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
-    minHeight: 100,
+    flex: 1,
+    textAlignVertical: "top",
   },
   inputDark: {
     color: "#f5f5f5",
+  },
+  bottomPadding: {
+    height: 300,
   },
   text: {
     color: "#999",

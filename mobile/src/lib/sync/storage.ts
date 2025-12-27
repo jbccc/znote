@@ -36,23 +36,38 @@ export async function getClientId(): Promise<string> {
   return clientId;
 }
 
-// Auth token (secure storage)
+// Auth token (secure storage with fallback to AsyncStorage for Expo Go)
 let cachedToken: string | null = null;
 
 export async function getAuthToken(): Promise<string | null> {
   if (cachedToken) return cachedToken;
-  cachedToken = await SecureStore.getItemAsync(STORAGE_KEYS.AUTH_TOKEN);
+  try {
+    cachedToken = await SecureStore.getItemAsync(STORAGE_KEYS.AUTH_TOKEN);
+  } catch {
+    // SecureStore fails in Expo Go, fall back to AsyncStorage
+    cachedToken = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+  }
   return cachedToken;
 }
 
 export async function setAuthToken(token: string): Promise<void> {
   cachedToken = token;
-  await SecureStore.setItemAsync(STORAGE_KEYS.AUTH_TOKEN, token);
+  try {
+    await SecureStore.setItemAsync(STORAGE_KEYS.AUTH_TOKEN, token);
+  } catch {
+    // SecureStore fails in Expo Go, fall back to AsyncStorage
+    await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+  }
 }
 
 export async function clearAuthToken(): Promise<void> {
   cachedToken = null;
-  await SecureStore.deleteItemAsync(STORAGE_KEYS.AUTH_TOKEN);
+  try {
+    await SecureStore.deleteItemAsync(STORAGE_KEYS.AUTH_TOKEN);
+  } catch {
+    // Ignore
+  }
+  await AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
   await AsyncStorage.removeItem(STORAGE_KEYS.USER);
 }
 

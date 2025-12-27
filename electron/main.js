@@ -1,14 +1,11 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, protocol } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { spawn } = require("child_process");
 const http = require("http");
 
 const isDev = process.env.NODE_ENV === "development";
-const PORT = 3456;
 
 let mainWindow;
-let serverProcess;
 
 function log(...args) {
   console.log("[znote]", ...args);
@@ -31,70 +28,12 @@ function waitForServer(url, timeout = 30000) {
   });
 }
 
-async function startProdServer() {
-  const standaloneDir = path.join(process.resourcesPath, "standalone");
-  const dbPath = path.join(app.getPath("userData"), "znote.db");
-
-  log("Starting server...");
-  log("Standalone dir:", standaloneDir);
-  log("DB path:", dbPath);
-  log("Resources path:", process.resourcesPath);
-
-  // Check if standalone exists
-  if (!fs.existsSync(standaloneDir)) {
-    throw new Error(`Standalone dir not found: ${standaloneDir}`);
+function getStaticPath() {
+  if (isDev) {
+    return null; // Use dev server in development
   }
-
-  if (!fs.existsSync(path.join(standaloneDir, "server.js"))) {
-    throw new Error("server.js not found in standalone dir");
-  }
-
-  // Find node - check common locations
-  const nodePaths = [
-    "/opt/homebrew/bin/node",
-    "/usr/local/bin/node",
-    "/usr/bin/node",
-  ];
-
-  let nodePath = null;
-  for (const p of nodePaths) {
-    if (fs.existsSync(p)) {
-      nodePath = p;
-      log("Found node at:", p);
-      break;
-    }
-  }
-
-  if (!nodePath) {
-    throw new Error("Node.js not found. Please install with: brew install node");
-  }
-
-  const env = {
-    ...process.env,
-    PORT: PORT.toString(),
-    DATABASE_URL: `file:${dbPath}`,
-    NODE_ENV: "production",
-    AUTH_SECRET: "znote-local-desktop-secret",
-    AUTH_TRUST_HOST: "true",
-    AUTH_URL: `http://localhost:${PORT}`,
-  };
-
-  log("Spawning server with:", nodePath, "server.js");
-
-  serverProcess = spawn(nodePath, ["server.js"], {
-    cwd: standaloneDir,
-    env,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  serverProcess.stdout.on("data", (data) => log("[server stdout]", data.toString()));
-  serverProcess.stderr.on("data", (data) => log("[server stderr]", data.toString()));
-  serverProcess.on("error", (err) => log("[server error]", err));
-  serverProcess.on("exit", (code) => log("[server exit]", code));
-
-  log("Waiting for server to be ready...");
-  await waitForServer(`http://localhost:${PORT}`);
-  log("Server ready!");
+  // In production, static files are in Resources/standalone
+  return path.join(process.resourcesPath, "standalone");
 }
 
 async function createWindow() {
@@ -124,15 +63,22 @@ async function createWindow() {
 
   try {
     if (isDev) {
-      // In dev, just connect to the running Next.js dev server
+      // In dev, connect to the running Vite dev server
       await waitForServer("http://localhost:3000");
       mainWindow.loadURL("http://localhost:3000");
     } else {
-      await startProdServer();
-      mainWindow.loadURL(`http://localhost:${PORT}`);
+      // In production, load static files
+      const staticPath = getStaticPath();
+      const indexPath = path.join(staticPath, "index.html");
+
+      if (!fs.existsSync(indexPath)) {
+        throw new Error(`Build files not found at: ${staticPath}`);
+      }
+
+      mainWindow.loadFile(indexPath);
     }
   } catch (err) {
-    log("Error starting server:", err.message);
+    log("Error loading app:", err.message);
     mainWindow.loadURL(`data:text/html;charset=utf-8,
       <!DOCTYPE html>
       <html>
@@ -161,14 +107,9 @@ async function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
-  if (serverProcess) serverProcess.kill();
   app.quit();
 });
 
 app.on("activate", () => {
   if (!mainWindow) createWindow();
-});
-
-app.on("before-quit", () => {
-  if (serverProcess) serverProcess.kill();
 });

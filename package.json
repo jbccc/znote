@@ -6,14 +6,11 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
+    "dev": "cd app && npm run dev",
+    "build": "cd app && npm run build",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
-    "electron:build": "npm run build && npm run electron:package && npm run electron:fixup",
-    "electron:package": "electron-builder --mac",
-    "electron:fixup": "cp -R .next/standalone/node_modules dist/mac-arm64/znote.app/Contents/Resources/standalone/"
+    "electron:build": "npm run build && npm run electron:package",
+    "electron:package": "electron-builder --mac"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -55,23 +52,8 @@
     ],
     "extraResources": [
       {
-        "from": ".next/standalone",
+        "from": "app/dist",
         "to": "standalone",
-        "filter": ["**/*"]
-      },
-      {
-        "from": ".next/static",
-        "to": "standalone/.next/static",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "public",
-        "to": "standalone/public",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "prisma",
-        "to": "standalone/prisma",
         "filter": ["**/*"]
       }
     ],
